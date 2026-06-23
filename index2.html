@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal IoT Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #f0f4f8;
+            --bg-active: #e6f7ec;
+            --card-bg: #ffffff;
+            --text-main: #334155;
+            --text-sub: #94a3b8;
+            --accent-on: #10b981; /* Emerald Green */
+            --accent-off: #cbd5e1; /* Slate Gray */
+            --shadow-normal: 0 10px 25px rgba(0, 0, 0, 0.05);
+            --shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.08);
+        }
+
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            transition: background-color 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body.is-on {
+            background-color: var(--bg-active);
+        }
+
+        /* Card Style */
+        .card {
+            background: var(--card-bg);
+            width: 340px;
+            padding: 40px 30px;
+            border-radius: 30px;
+            box-shadow: var(--shadow-normal);
+            text-align: center;
+            transition: all 0.4s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .header h2 {
+            margin: 0;
+            font-size: 1.6rem;
+            font-weight: 600;
+        }
+
+        .header p {
+            margin: 5px 0 30px;
+            color: var(--text-sub);
+            font-size: 0.9rem;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+        }
+
+        /* Status Indicator */
+        .status-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .glow-ring {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: transparent;
+            border: 2px dashed var(--accent-off);
+            transition: all 0.5s ease;
+            margin-bottom: 20px;
+        }
+
+        .led-indicator {
+            width: 60px;
+            height: 60px;
+            background-color: var(--accent-off);
+            border-radius: 50%;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* ON State Styles */
+        .glow-ring.on {
+            border-color: rgba(16, 185, 129, 0.3);
+            border-style: solid;
+            background: rgba(16, 185, 129, 0.05);
+            animation: pulse-ring 2s infinite;
+        }
+
+        .led-indicator.on {
+            background-color: var(--accent-on);
+            box-shadow: 0 0 20px var(--accent-on), inset 0 -2px 6px rgba(0,0,0,0.2);
+            transform: scale(1.05);
+        }
+
+        .status-text {
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: var(--text-sub);
+            transition: color 0.4s;
+        }
+
+        .status-text.on {
+            color: var(--accent-on);
+        }
+
+        /* Toggle Button */
+        .btn-toggle {
+            background: var(--text-main);
+            color: #fff;
+            border: none;
+            padding: 16px 32px;
+            font-family: inherit;
+            font-size: 1.1rem;
+            font-weight: 500;
+            border-radius: 16px;
+            width: 100%;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(51, 65, 85, 0.2);
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-toggle:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 6px rgba(51, 65, 85, 0.1);
+        }
+
+        .btn-toggle.on {
+            background: var(--accent-on);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.2); }
+            70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* Loading Overlay */
+        #app { opacity: 0.4; pointer-events: none; transition: opacity 0.3s; }
+        #app.ready { opacity: 1; pointer-events: auto; }
+    </style>
+</head>
+<body>
+
+    <div class="card" id="app">
+        <div class="header">
+            <h2>LED Controller</h2>
+            <p>IoT1 • device1 • led1</p>
+        </div>
+
+        <div class="status-wrapper">
+            <div class="glow-ring" id="glowRing">
+                <div class="led-indicator" id="ledIndicator"></div>
+            </div>
+            <div class="status-text" id="statusText">CONNECTING...</div>
+        </div>
+
+        <button class="btn-toggle" id="btnToggle">
+            Toggle Power
+        </button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // Firebase Configuration ของคุณ
+        const firebaseConfig = {
+            apiKey: "AIzaSyCY9c0cyUdjeZgAex7Si0DyXGAMZ_MY0OQ",
+            authDomain: "iot1-6c032.firebaseapp.com",
+            databaseURL: "https://iot1-6c032-default-rtdb.firebaseio.com",
+            projectId: "iot1-6c032",
+            storageBucket: "iot1-6c032.firebasestorage.app",
+            messagingSenderId: "722774557899",
+            appId: "1:722774557899:web:9595d70c69fb5cd62dc74e",
+            measurementId: "G-QZT6V1NY0N"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        // อ้างอิงไปยัง Collection: IoT1, Document: device1
+        const deviceRef = doc(db, "IoT1", "device1");
+
+        // UI Elements
+        const appContainer = document.getElementById('app');
+        const glowRing = document.getElementById('glowRing');
+        const ledIndicator = document.getElementById('ledIndicator');
+        const statusText = document.getElementById('statusText');
+        const btnToggle = document.getElementById('btnToggle');
+
+        let currentStatus = 0; // ค่าเริ่มต้น
+
+        // ----------------------------------------------------
+        // 1. Real-time Listener ฟังการเปลี่ยนแปลงจาก Firebase
+        // ----------------------------------------------------
+        onSnapshot(deviceRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                currentStatus = data.led1 !== undefined ? data.led1 : 0;
+            } else {
+                // ถ้ายังไม่มี Document ให้สร้างอัตโนมัติ (Auto-healing)
+                setDoc(deviceRef, { led1: 0 }, { merge: true });
+                currentStatus = 0;
+            }
+            
+            updateUI(currentStatus);
+            appContainer.classList.add('ready'); // ปลดล็อก UI
+        }, (error) => {
+            console.error("Firebase Error:", error);
+            statusText.innerText = "CONNECTION ERROR";
+            statusText.style.color = "#ef4444";
+        });
+
+        // ----------------------------------------------------
+        // 2. ฟังก์ชันจัดการ UI/UX และ Animation
+        // ----------------------------------------------------
+        function updateUI(status) {
+            const isOn = status === 1;
+            
+            if (isOn) {
+                glowRing.classList.add('on');
+                ledIndicator.classList.add('on');
+                statusText.classList.add('on');
+                statusText.innerText = 'STATUS: ON';
+                btnToggle.classList.add('on');
+                document.body.classList.add('is-on');
+            } else {
+                glowRing.classList.remove('on');
+                ledIndicator.classList.remove('on');
+                statusText.classList.remove('on');
+                statusText.innerText = 'STATUS: OFF';
+                btnToggle.classList.remove('on');
+                document.body.classList.remove('is-on');
+            }
+        }
+
+        // ----------------------------------------------------
+        // 3. ฟังก์ชันเมื่อกดปุ่ม Toggle
+        // ----------------------------------------------------
+        btnToggle.addEventListener('click', async () => {
+            // สั่นมือถือเล็กน้อยตอนกด (ถ้าอุปกรณ์รองรับ) เพื่อเพิ่ม UX
+            if (navigator.vibrate) navigator.vibrate(50);
+
+            // สลับสถานะ 0 เป็น 1 หรือ 1 เป็น 0
+            const newStatus = currentStatus === 1 ? 0 : 1;
+            
+            try {
+                // ส่งค่าขึ้น Firebase แบบ merge (เขียนทับแค่ฟิลด์ led1)
+                await setDoc(deviceRef, { led1: newStatus }, { merge: true });
+            } catch (error) {
+                console.error("Write Error:", error);
+                alert("ไม่สามารถสั่งงานได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต");
+            }
+        });
+    </script>
+</body>
+</html>
